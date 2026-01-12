@@ -1,4 +1,4 @@
-import { cofhejs, Encryptable, FheTypes } from "cofhejs/web";
+import { cofhejs, Encryptable } from "cofhejs/web";
 import { ethers } from "ethers";
 import { useState } from "react";
 
@@ -22,8 +22,7 @@ export function useCounter(contractAddress: string) {
     
     const result = await cofhejs.initializeWithEthers({
       ethersProvider: provider,
-      ethersSigner: signer,
-      environment: "TESTNET"
+      ethersSigner: signer
     });
     
     if (result.success) setIsInitialized(true);
@@ -64,7 +63,9 @@ export function useCounter(contractAddress: string) {
     // Encrypt the value
     const encryptResult = await cofhejs.encrypt(
       [Encryptable.uint32(value)],
-      (state) => console.log(`Encrypting: ${state}`)
+      (state) => {
+        console.log(`Encrypting: ${state}`);
+      }
     );
 
     if (!encryptResult.success) {
@@ -95,4 +96,5 @@ export function useCounter(contractAddress: string) {
 
   return { initialize, increment, decrement, reset, getDecryptedValue, isInitialized, loading };
 }
+
 

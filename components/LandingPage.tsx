@@ -1,13 +1,14 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { ConnectButton, useAccount } from '@rainbow-me/rainbowkit';
+import { ConnectButton } from '@rainbow-me/rainbowkit';
+import { useAccount } from 'wagmi';
 import ThemeToggle from './ThemeToggle';
 import { useTheme } from '../contexts/ThemeContext';
 import { useCounter } from '../hooks/useCounter';
 
-// Contract address - update this with your deployed contract address
-const CONTRACT_ADDRESS = process.env.NEXT_PUBLIC_CONTRACT_ADDRESS || '';
+// Contract address deployed on Sepolia
+const CONTRACT_ADDRESS = '0x0D719dd073f4B3e36D0D263F4bb76F9B7E46D0c2';
 
 export default function LandingPage() {
   const { theme } = useTheme();
@@ -32,7 +33,7 @@ export default function LandingPage() {
 
   // Auto-initialize when wallet is connected
   useEffect(() => {
-    if (isConnected && !isInitialized && window.ethereum) {
+    if (isConnected && !isInitialized && typeof window !== 'undefined' && window.ethereum) {
       initialize().catch((err: any) => {
         console.error('Initialization error:', err);
         setInitError(err?.message || 'Failed to initialize');
@@ -40,18 +41,17 @@ export default function LandingPage() {
     }
   }, [isConnected, isInitialized, initialize]);
 
-  // Read encrypted counter value (simulated)
+  // Read encrypted counter value (get decrypted value from contract)
   const readCounterEncryptedValue = async () => {
-    if (!initialized) {
-      setError('Please connect wallet first');
+    if (!isInitialized) {
+      setError('Please connect wallet and wait for initialization');
       return;
     }
     try {
       setLoading('Reading counter...');
       setError(null);
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      setDecryptedValue(prev => prev !== null ? prev : 0);
+      const value = await getDecryptedValue();
+      setDecryptedValue(Number(value));
     } catch (err: any) {
       console.error('Error reading encrypted counter:', err);
       setError(err?.message || 'Failed to read counter');
@@ -62,16 +62,23 @@ export default function LandingPage() {
 
   // Increment the counter
   const incrementCounter = async () => {
-    if (!initialized) {
-      setError('Please connect wallet first');
+    if (!isInitialized) {
+      setError('Please connect wallet and wait for initialization');
       return;
     }
     try {
       setLoading('Incrementing counter...');
       setError(null);
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      setDecryptedValue(prev => (prev !== null ? prev + 1 : 1));
+      await increment();
+      // Refresh the decrypted value after increment
+      setTimeout(async () => {
+        try {
+          const value = await getDecryptedValue();
+          setDecryptedValue(Number(value));
+        } catch (err) {
+          console.error('Error refreshing value:', err);
+        }
+      }, 2000);
     } catch (err: any) {
       console.error('Error incrementing counter:', err);
       setError(err?.message || 'Failed to increment counter');
@@ -82,16 +89,23 @@ export default function LandingPage() {
 
   // Decrement the counter
   const decrementCounter = async () => {
-    if (!initialized) {
-      setError('Please connect wallet first');
+    if (!isInitialized) {
+      setError('Please connect wallet and wait for initialization');
       return;
     }
     try {
       setLoading('Decrementing counter...');
       setError(null);
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      setDecryptedValue(prev => (prev !== null ? prev - 1 : -1));
+      await decrement();
+      // Refresh the decrypted value after decrement
+      setTimeout(async () => {
+        try {
+          const value = await getDecryptedValue();
+          setDecryptedValue(Number(value));
+        } catch (err) {
+          console.error('Error refreshing value:', err);
+        }
+      }, 2000);
     } catch (err: any) {
       console.error('Error decrementing counter:', err);
       setError(err?.message || 'Failed to decrement counter');
@@ -102,16 +116,15 @@ export default function LandingPage() {
 
   // Decrypt counter on-chain
   const decryptCounter = async () => {
-    if (!initialized) {
-      setError('Please connect wallet first');
+    if (!isInitialized) {
+      setError('Please connect wallet and wait for initialization');
       return;
     }
     try {
       setLoading('Decrypting counter...');
       setError(null);
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      setDecryptedValue(prev => prev !== null ? prev : 0);
+      const value = await getDecryptedValue();
+      setDecryptedValue(Number(value));
     } catch (err: any) {
       console.error('Error decrypting counter:', err);
       setError(err?.message || 'Failed to decrypt counter');
@@ -126,24 +139,36 @@ export default function LandingPage() {
       setError('Please enter a valid number');
       return;
     }
-    if (!initialized) {
-      setError('Please connect wallet first');
+    if (!isInitialized) {
+      setError('Please connect wallet and wait for initialization');
       return;
     }
     try {
       setLoading('Resetting counter...');
       setError(null);
-      setEncryptionProgress('Encrypting...');
-      // Simulate encryption
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      setDecryptedValue(Number(resetValue));
-      setResetValue('');
+      setEncryptionProgress('Encrypting value...');
+      
+      const value = BigInt(Number(resetValue));
+      await reset(value);
+      
       setEncryptionProgress('');
+      setResetValue('');
+      
+      // Refresh the decrypted value after reset
+      setTimeout(async () => {
+        try {
+          const decryptedValue = await getDecryptedValue();
+          setDecryptedValue(Number(decryptedValue));
+        } catch (err) {
+          console.error('Error refreshing value:', err);
+        }
+      }, 2000);
     } catch (err: any) {
       console.error('Error:', err);
       setError(err?.message || 'Failed to reset counter');
-      setLoading(null);
       setEncryptionProgress('');
+    } finally {
+      setLoading(null);
     }
   };
 
@@ -253,7 +278,7 @@ export default function LandingPage() {
                   {initError}
                 </p>
               )}
-              {!initialized && !initError && (
+              {!isInitialized && !initError && (
                 <p
                   className={`text-sm mt-2 ${
                     isLight ? 'text-zinc-500' : 'text-zinc-400'
@@ -316,9 +341,9 @@ export default function LandingPage() {
                 <button
                   key={action}
                   onClick={() => handleAction(action)}
-                  disabled={!initialized || !!loading}
+                  disabled={!isInitialized || !!loading || !!counterLoading}
                   className={`relative w-full h-12 border rounded-sm font-semibold text-lg flex items-center justify-center transition-all ${
-                    !initialized || loading
+                    !isInitialized || loading || counterLoading
                       ? 'opacity-50 cursor-not-allowed'
                       : isLight
                         ? 'border-[#03D9DC] text-[#011623] hover:bg-[#03D9DC]/10 active:bg-[#03D9DC]/20'
@@ -358,9 +383,9 @@ export default function LandingPage() {
             {/* Read Encrypted Value Button */}
             <button
               onClick={readCounterEncryptedValue}
-              disabled={!initialized || !!loading}
+              disabled={!isInitialized || !!loading || !!counterLoading}
               className={`relative w-full h-12 border rounded-sm font-semibold text-lg flex items-center justify-center transition-all ${
-                !initialized || loading
+                !isInitialized || loading || counterLoading
                   ? 'opacity-50 cursor-not-allowed'
                   : isLight
                     ? 'border-[#03D9DC] text-[#011623] hover:bg-[#03D9DC]/10 active:bg-[#03D9DC]/20'
@@ -405,9 +430,9 @@ export default function LandingPage() {
                   onChange={e => setResetValue(e.target.value)}
                   onKeyDown={e => e.key === 'Enter' && handleResetCounter()}
                   placeholder="New value"
-                  disabled={!initialized || !!loading}
+                  disabled={!isInitialized || !!loading || !!counterLoading}
                   className={`flex-1 px-4 py-3 border rounded-sm font-mono text-sm ${
-                    !initialized || loading
+                    !isInitialized || loading || counterLoading
                       ? 'opacity-50 cursor-not-allowed'
                       : isLight
                         ? 'border-[#03D9DC] bg-white text-[#011623] placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-[#03D9DC]'
@@ -416,9 +441,9 @@ export default function LandingPage() {
                 />
                 <button
                   onClick={handleResetCounter}
-                  disabled={!initialized || !!loading || !resetValue}
+                  disabled={!isInitialized || !!loading || !!counterLoading || !resetValue}
                   className={`relative w-32 h-12 border rounded-sm font-semibold text-lg flex items-center justify-center transition-all ${
-                    !initialized || loading || !resetValue
+                    !isInitialized || loading || counterLoading || !resetValue
                       ? 'opacity-50 cursor-not-allowed'
                       : isLight
                         ? 'border-[#03D9DC] text-[#011623] hover:bg-[#03D9DC]/10 active:bg-[#03D9DC]/20'
