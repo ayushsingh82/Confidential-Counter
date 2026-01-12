@@ -1,25 +1,44 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { ConnectButton, useAccount } from '@rainbow-me/rainbowkit';
 import ThemeToggle from './ThemeToggle';
 import { useTheme } from '../contexts/ThemeContext';
+import { useCounter } from '../hooks/useCounter';
+
+// Contract address - update this with your deployed contract address
+const CONTRACT_ADDRESS = process.env.NEXT_PUBLIC_CONTRACT_ADDRESS || '';
 
 export default function LandingPage() {
   const { theme } = useTheme();
   const isLight = theme === 'light';
+  const { isConnected } = useAccount();
   const [resetValue, setResetValue] = useState('');
   const [decryptedValue, setDecryptedValue] = useState<number | null>(null);
   const [loading, setLoading] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [encryptionProgress, setEncryptionProgress] = useState<string>('');
-  const [initialized, setInitialized] = useState(false);
   const [initError, setInitError] = useState<string | null>(null);
 
-  // Simulate wallet connection
-  const handleConnectWallet = () => {
-    setInitialized(true);
-    setInitError(null);
-  };
+  const {
+    initialize,
+    increment,
+    decrement,
+    reset,
+    getDecryptedValue,
+    isInitialized,
+    loading: counterLoading,
+  } = useCounter(CONTRACT_ADDRESS);
+
+  // Auto-initialize when wallet is connected
+  useEffect(() => {
+    if (isConnected && !isInitialized && window.ethereum) {
+      initialize().catch((err: any) => {
+        console.error('Initialization error:', err);
+        setInitError(err?.message || 'Failed to initialize');
+      });
+    }
+  }, [isConnected, isInitialized, initialize]);
 
   // Read encrypted counter value (simulated)
   const readCounterEncryptedValue = async () => {
@@ -224,19 +243,7 @@ export default function LandingPage() {
               >
                 Wallet
               </label>
-              <button
-                onClick={handleConnectWallet}
-                disabled={initialized}
-                className={`w-full px-4 py-2 border rounded-sm font-semibold ${
-                  initialized
-                    ? 'opacity-50 cursor-not-allowed'
-                    : isLight
-                      ? 'border-[#03D9DC] text-[#011623] hover:bg-[#03D9DC]/10'
-                      : 'border-zinc-700 text-white hover:bg-[#CC4420]/10'
-                }`}
-              >
-                {initialized ? 'Connected' : 'Connect Wallet'}
-              </button>
+              <ConnectButton />
               {initError && (
                 <p
                   className={`text-sm mt-2 ${
